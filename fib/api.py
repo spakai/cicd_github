@@ -55,3 +55,9 @@ def run(host: str = "127.0.0.1", port: int = 8000) -> None:
         pass
     finally:
         server.server_close()
+
+
+if __name__ == "__main__":
+    run(host="0.0.0.0", port=8000)
+    if __name__ == "__main__":
+        run(host="0.0.0.0", port=8000)
