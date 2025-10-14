@@ -1,5 +1,6 @@
 """Minimal HTTP server exposing a Fibonacci endpoint."""
 
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 import json
@@ -58,6 +59,10 @@ def run(host: str = "127.0.0.1", port: int = 8000) -> None:
 
 
 if __name__ == "__main__":
-    run(host="0.0.0.0", port=8000)
-    if __name__ == "__main__":
-        run(host="0.0.0.0", port=8000)
+    default_port = os.getenv("FIB_SERVER_PORT", "8000")
+    try:
+        configured_port = int(default_port)
+    except ValueError:
+        raise ValueError("FIB_SERVER_PORT must be an integer") from None
+
+    run(host=os.getenv("FIB_SERVER_HOST", "127.0.0.1"), port=configured_port)

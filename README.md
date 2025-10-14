@@ -45,6 +45,13 @@ python -m fib.api
 ```
 Then access: `http://127.0.0.1:8000/fib/?n=10`
 
+The module honours two optional environment variables when launched directly:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `FIB_SERVER_HOST` | Network interface bound by the development server. Use `0.0.0.0` inside containers. | `127.0.0.1` |
+| `FIB_SERVER_PORT` | TCP port exposed by the server. | `8000` |
+
 ## CI/CD Pipeline
 
 On every push or pull request, GitHub Actions will:
@@ -55,6 +62,15 @@ On every push or pull request, GitHub Actions will:
 When a push targets the `main` branch and the validation job succeeds, the workflow automatically builds the Docker image and publishes it to Docker Hub.
 
 See `.github/workflows/ci.yml` for details.
+
+### AI-assisted security review
+
+The pipeline can optionally run a Snyk Code scan that leverages AI to surface and suggest fixes for security issues highlighted by tools such as Bandit. To enable it:
+
+1. Create a free account at [Snyk](https://snyk.io/) and generate an API token from **Account settings → API tokens**.
+2. Add the token to your repository as the `SNYK_TOKEN` secret under **Settings → Secrets and variables → Actions**.
+
+When the secret is present the `Snyk Code AI review` job executes on every push and pull request, uploads a JSON report artifact, and blocks the publish stage if it finds issues.
 
 ### Suggested Next Stage
 
@@ -73,10 +89,12 @@ With the secrets configured, the workflow will:
 
 ```yaml
 publish:
-  needs: test
+  needs:
+    - test
+    - ai_security_review
   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
   steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: docker/setup-buildx-action@v2
     - uses: docker/login-action@v2
       with:
