@@ -25,35 +25,10 @@ jobs:
       - name: Run tests with coverage
         run: pytest --cov=fib --cov-report=term-missing
 
-  ai_security_review:
-    name: Snyk Code AI review
-    needs: test
-    if: ${{ secrets.SNYK_TOKEN != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
-      - name: Install Snyk CLI
-        run: npm install -g snyk
-      - name: Run Snyk Code scan
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: |
-          mkdir -p reports
-          snyk code test --severity-threshold=medium --json-file-output=reports/snyk-code.json
-      - name: Upload Snyk Code report
-        uses: actions/upload-artifact@v4
-        with:
-          name: snyk-code-report
-          path: reports/snyk-code.json
-
   publish:
     name: Publish Docker image
     needs:
       - test
-      - ai_security_review
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:

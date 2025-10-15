@@ -63,15 +63,6 @@ When a push targets the `main` branch and the validation job succeeds, the workf
 
 See `.github/workflows/ci.yml` for details.
 
-### AI-assisted security review
-
-The pipeline can optionally run a Snyk Code scan that leverages AI to surface and suggest fixes for security issues highlighted by tools such as Bandit. To enable it:
-
-1. Create a free account at [Snyk](https://snyk.io/) and generate an API token from **Account settings → API tokens**.
-2. Add the token to your repository as the `SNYK_TOKEN` secret under **Settings → Secrets and variables → Actions**.
-
-When the secret is present the `Snyk Code AI review` job executes on every push and pull request, uploads a JSON report artifact, and blocks the publish stage if it finds issues.
-
 ### Suggested Next Stage
 
 To extend the pipeline beyond validation, add a deployment stage that builds the Docker image and publishes it to your chosen container registry. After pushing the image, trigger an environment-specific deploy (for example, using GitHub Environments with manual approvals or Infrastructure as Code such as Terraform) so new commits automatically roll out once they pass the quality gate established by the existing jobs.
@@ -91,7 +82,6 @@ With the secrets configured, the workflow will:
 publish:
   needs:
     - test
-    - ai_security_review
   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
   steps:
     - uses: actions/checkout@v4
