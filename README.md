@@ -67,6 +67,34 @@ See `.github/workflows/ci.yml` for details.
 
 To extend the pipeline beyond validation, add a deployment stage that builds the Docker image and publishes it to your chosen container registry. After pushing the image, trigger an environment-specific deploy (for example, using GitHub Environments with manual approvals or Infrastructure as Code such as Terraform) so new commits automatically roll out once they pass the quality gate established by the existing jobs.
 
+### Deploying the published image
+
+Once the image (for example `spakai/cicd-gitea`) is available on Docker Hub, you can promote it to each environment with a lightweight run job. A minimal manual workflow looks like:
+
+```bash
+# Pull the image that GitHub Actions published
+docker pull spakai/cicd-gitea:latest
+
+# Run it locally for a smoke test
+docker run --rm -p 8000:8000 \
+  -e FIB_SERVER_HOST=0.0.0.0 \
+  -e FIB_SERVER_PORT=8000 \
+  spakai/cicd-gitea:latest
+
+# Open http://localhost:8000/fib/?n=10 and verify the API responds.
+```
+
+For repeatable deployments, codify the runtime configuration. Two common options are:
+
+- **Docker Compose:** define dependencies (for example, a reverse proxy) and share the stack via version-controlled YAML.
+- **Kubernetes/Helm:** create manifests that reference the image tag produced by CI and leverage progressive delivery strategies such as blue/green or canary releases.
+
+After you are comfortable with the manual steps, create a `deploy` job in GitHub Actions that runs only after the publish job succeeds. The job can target self-hosted runners (for on-premises servers, like Gitea or a private VM) or call out to your infrastructure provider via Terraform, Ansible, or a platform-specific deployment action. Make sure to:
+
+1. Promote immutable tags (for example, `${{ github.sha }}`) so each deployment is traceable back to a commit.
+2. Use environments and required reviewers in GitHub Actions to gate production deploys.
+3. Capture deployment status with `deployment` events so GitHub’s Environment dashboard and audit trail stay in sync with your releases.
+
 ### Publishing to Docker Hub from GitHub Actions
 
 The repository now includes a `publish` job that builds the Docker image and pushes it to Docker Hub whenever a commit is pushed to the `main` branch and all validation checks pass. To make the job succeed you must supply Docker Hub credentials via GitHub secrets:
