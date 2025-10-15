@@ -59,7 +59,7 @@ On every push or pull request, GitHub Actions will:
 - Run linting and static analysis
 - Run tests and report coverage
 
-When a push targets the `main` branch and the validation job succeeds, the workflow automatically builds the Docker image and publishes it to Docker Hub.
+Pull requests trigger the validation job so every PR runs the full linting, type-checking, security, and test suite before it is eligible to merge. When a push targets the `main` branch and the validation job succeeds, the workflow automatically builds the Docker image and publishes it to Docker Hub. Because the publish stage only runs for pushes to `main`, you will see it marked as **skipped** on pull request builds—this is expected so unmerged code does not push images prematurely.
 
 See `.github/workflows/ci.yml` for details.
 
