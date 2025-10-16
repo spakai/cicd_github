@@ -48,4 +48,3 @@ def test_flaky_resource_lock():
     if random.random() < 0.2:
         raise RuntimeError("Resource lock acquisition failed")
     assert True
-

@@ -41,4 +41,3 @@ def test_computation_timeout():
     # Simulate heavy computation
     time.sleep(2)
     assert True
-
