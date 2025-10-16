@@ -105,7 +105,8 @@ class TestPerformanceIntegration:
         try:
             # Make concurrent requests
             import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+            with executor:
                 futures = []
                 for n in range(10, 15):
                     url = (f"http://{server.server_name}:"
