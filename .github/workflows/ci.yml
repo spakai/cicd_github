@@ -164,7 +164,8 @@ jobs:
             gh pr comment ${{ github.event.number }} --body "🤖 **CI Triage (LLM):**\n\n$SUMMARY"
           else
             echo "📝 Posting AI summary to commit..."
-            gh issue comment ${{ github.sha }} --body "🤖 **CI Triage (LLM):**\n\n$SUMMARY" || true
+            # Use the GitHub API to create a comment on the commit (gh issue comment expects an issue number)
+            gh api repos/${{ github.repository }}/commits/${{ github.sha }}/comments -f body="🤖 **CI Triage (LLM):**\n\n$SUMMARY" || true
           fi
 
   publish:
