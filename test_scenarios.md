@@ -2,6 +2,15 @@
 
 This document describes the test scenarios that demonstrate the intelligent features of the CI/CD pipeline.
 
+## ⚡ Quick Reference
+
+| Scenario | Markers / Files | Command |
+| --- | --- | --- |
+| Flaky auto-retry | `pytest -m flaky` / `tests/test_flaky.py` | `./trigger_scenarios.sh flaky` |
+| Timeout handling | `pytest -m timeout` / `tests/test_timeout.py` | `./trigger_scenarios.sh timeout` |
+| ML-powered selection | `pytest -m "ml_critical or ml_high_risk"` / `tests/test_ml_features.py` | `./trigger_scenarios.sh ml-critical` |
+| Integration coverage | `pytest tests/test_integration.py` | `./trigger_scenarios.sh integration` |
+
 ## 🧪 Flaky Test Scenarios (Auto-Retry)
 
 The following tests in `test_flaky.py` simulate real-world flaky behavior:
