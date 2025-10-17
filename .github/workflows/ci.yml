@@ -22,7 +22,7 @@ env:
   PYTHON_VERSION: "3.11"
   POETRY_VIRTUALENVS_CREATE: "false"
   # Feature flags (toggle without editing steps)
-  USE_PYTEST_TESTMON: "false"       # set to "true" when you add pytest-testmon (incompatible with -m markers)
+  USE_PYTEST_TESTMON: "true"        # set to "true" when you add pytest-testmon (incompatible with -m markers)
   USE_RERUNS: "true"
   USE_MODELS_SUMMARY: "true"    # set to "true" if you have GitHub Models enabled
   PUBLISH_ON_MAIN: "true"       # uses Docker Hub creds (secrets below)
