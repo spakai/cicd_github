@@ -32,7 +32,7 @@ class TestMLCriticalPath:
                 assert data == {"n": 10, "value": 55}
         finally:
             server.shutdown()
-            thread.join()
+            thread.join(timeout=1.0)
 
 
 @pytest.mark.ml_affected

@@ -52,7 +52,7 @@ class TestAPIIntegration:
                     assert data["n"] == n
         finally:
             server.shutdown()
-            thread.join()
+            thread.join(timeout=1.0)
 
     def test_api_error_handling(self):
         """Tests API error handling."""
@@ -64,6 +64,7 @@ class TestAPIIntegration:
         server = HTTPServer(("127.0.0.1", 0), FibRequestHandler)
         thread = Thread(target=server.serve_forever)
         thread.daemon = True
+        thread.start()  # FIXED: Start the thread!
 
         try:
             url = (f"http://{server.server_name}:"
@@ -72,7 +73,7 @@ class TestAPIIntegration:
                 urllib.request.urlopen(url)
         finally:
             server.shutdown()
-            thread.join()
+            thread.join(timeout=1.0)  # Add timeout to prevent hanging
 
 
 class TestPerformanceIntegration:
@@ -121,4 +122,4 @@ class TestPerformanceIntegration:
                 assert len(results) == 5
         finally:
             server.shutdown()
-            thread.join()
+            thread.join(timeout=1.0)
