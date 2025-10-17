@@ -83,6 +83,17 @@ jobs:
           echo "📋 Running test suite"
           $PYTEST_BASE
 
+      - name: Upload LLM debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-debug
+          path: |
+            llm_raw.json
+            llm_summary.txt
+            commit_comment_resp.json
+          if-no-files-found: ignore
+
       - name: Always upload JUnit + coverage
         if: always()
         uses: actions/upload-artifact@v4
