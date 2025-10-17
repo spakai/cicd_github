@@ -36,4 +36,3 @@ def test_assertion_error_with_context():
         f"API returned error status: {data['status']} "
         f"(code: {data['code']}, message: {data['message']})"
     )
-
