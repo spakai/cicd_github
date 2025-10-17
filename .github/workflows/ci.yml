@@ -149,7 +149,8 @@ jobs:
         run: |
           echo "🤖 AI Analysis: Analyzing failure with GitHub Models..."
           tail -n 500 report.xml > last_logs.txt || true
-          BODY=$(jq -n --arg t "Summarize CI failure logs and propose fixes: flakes vs network vs real regression. Bullet points, short." \
+          # Stronger prompt: request a concise bullet-list (4 items max) and require a short answer
+          BODY=$(jq -n --arg t "Summarize CI failure logs and propose fixes: flakes vs network vs real regression. Provide up to 4 short bullet points (each starting with '-'). If there's nothing to report, reply 'no summary'. Keep it <200 chars." \
                        --arg l "$(cat last_logs.txt 2>/dev/null || echo 'no junit')" \
                        '{messages:[{role:"user",content:($t+"\n\nLOGS:\n"+$l)}]}')
           # Call GitHub Models Inference API
@@ -157,13 +158,23 @@ jobs:
                       -H "Content-Type: application/json" \
                       -X POST https://api.github.com/models/inference \
                       -d "$BODY" || echo "{}")
-          SUMMARY=$(echo "$RESP" | jq -r '..|.content? // empty' | head -n 50)
+          # Save raw response for debugging
+          echo "$RESP" > llm_raw.json
+
+          # Attempt multiple extraction paths for different model response shapes
+          TRY1=$(echo "$RESP" | jq -r '.choices[0].message.content // empty' 2>/dev/null || echo "")
+          TRY2=$(echo "$RESP" | jq -r '.choices[0].text // empty' 2>/dev/null || echo "")
+          TRY3=$(echo "$RESP" | jq -r '.data[0].text // empty' 2>/dev/null || echo "")
+          TRY4=$(echo "$RESP" | jq -r '..|.content? // empty' 2>/dev/null | tr '\n' '\x1f' | sed 's/\x1f/\n/g' | head -n 50 || echo "")
+          SUMMARY=$(printf "%s\n%s\n%s\n%s\n" "$TRY1" "$TRY2" "$TRY3" "$TRY4" | sed '/^$/d' | head -n 50)
           # Fallback if summary is empty
           if [ -z "$(echo "$SUMMARY" | tr -d '\n' | tr -d '[:space:]')" ]; then
             SUMMARY="(no summary produced by models)"
           fi
           echo "$SUMMARY" > llm_summary.txt
           echo "✅ AI Analysis complete"
+          echo "Extracted LLM summary (logging for debug):"
+          echo "$SUMMARY"
           # Post to PR/commit
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "📝 Posting AI summary to PR..."
