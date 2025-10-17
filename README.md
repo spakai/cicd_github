@@ -1,7 +1,9 @@
 
-# cicd_gitea
+# cicd_github
 
-An example Python project demonstrating CI/CD with GitHub Actions.
+An example Python project that demonstrates a resilient CI/CD workflow powered by GitHub Actions. In
+addition to a minimal Fibonacci API, the repository showcases self-healing pipeline behaviour,
+ML-driven test selection, and automated publishing to Docker Hub.
 
 ## Features
 - Minimal HTTP API for Fibonacci numbers
@@ -19,12 +21,15 @@ An example Python project demonstrating CI/CD with GitHub Actions.
 Clone the repo and install dependencies:
 
 ```bash
-git clone https://github.com/spakai/cicd_gitea.git
-cd cicd_gitea
+git clone https://github.com/spakai/cicd_github.git
+cd cicd_github
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
+
+If you prefer an isolated environment manager such as `pyenv` or `conda`, create the environment
+using your tool of choice and install the same dependencies listed in `requirements.txt`.
 
 ### Running Tests & Linting
 
@@ -61,7 +66,20 @@ On every push or pull request, GitHub Actions will:
 
 Pull requests trigger the validation job so every PR runs the full linting, type-checking, security, and test suite before it is eligible to merge. When a push targets the `main` branch and the validation job succeeds, the workflow automatically builds the Docker image and publishes it to Docker Hub. Because the publish stage only runs for pushes to `main`, you will see it marked as **skipped** on pull request builds—this is expected so unmerged code does not push images prematurely.
 
-See `.github/workflows/ci.yml` for details.
+See `.github/workflows/ci.yml` for details. To experiment with the self-healing features locally,
+run the curated scenarios via the helper script:
+
+```bash
+# Run all scenarios sequentially
+./trigger_scenarios.sh all
+
+# Target a specific category, e.g. flaky tests
+./trigger_scenarios.sh flaky
+```
+
+Each scenario prints log snippets that mirror what you will observe inside GitHub Actions when the
+pipeline automatically retries flaky tests, classifies timeout failures, or narrows the test set via
+ML-powered selection.
 
 ### Suggested Next Stage
 
@@ -130,7 +148,9 @@ publish:
 Adjust the branch filter, tags, or build arguments if you prefer a different release strategy (for example only pushing on version tags or pushing multiple architectures).
 
 ## Contributing
-Pull requests are welcome! Please ensure code passes all checks before submitting.
+Pull requests are welcome! Please ensure code passes all checks before submitting. The
+`TESTING_GUIDE.md` and `test_scenarios.md` documents provide additional background if you plan to
+extend the self-healing demonstrations or add new failure modes.
 
 ## License
 MIT

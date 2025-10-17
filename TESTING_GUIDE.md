@@ -4,6 +4,17 @@ This guide explains how to use the test scenarios to demonstrate the intelligent
 
 ## 🎯 Quick Start
 
+Before running any scenario, install the Python dependencies from `requirements.txt`, activate your
+virtual environment, and ensure the helper script is executable:
+
+```bash
+pip install -r requirements.txt
+source venv/bin/activate  # or your preferred environment
+chmod +x trigger_scenarios.sh
+```
+
+All commands below assume you are in the repository root.
+
 ### Run All Test Scenarios Locally
 
 ```bash
@@ -62,7 +73,12 @@ Demonstrates intelligent test selection:
 
 **How it works**: Tests are marked with categories that ML can use to intelligently select which tests to run.
 
-**Expected behavior**: ML selects only relevant tests based on code changes.
+**Expected behavior**: ML selects only relevant tests based on code changes. To simulate this
+behaviour locally, combine markers when calling `pytest`:
+
+```bash
+pytest -m "ml_critical or ml_high_risk"
+```
 
 ### 4. `test_integration.py` - Integration Tests
 Comprehensive end-to-end tests:
@@ -144,6 +160,12 @@ When a test fails:
 • Suggested fix: Add retry logic or increase timeout
 • Recommendation: This is a known flaky test, can be ignored
 ```
+
+## 📚 Additional Resources
+
+- `test_scenarios.md` – detailed descriptions of every scenario and the individual tests involved.
+- `SELF_HEALING_FEATURES.md` – high-level overview of the intelligent CI/CD capabilities on display.
+- `README.md` – setup instructions, CI/CD pipeline summary, and links to related documentation.
 
 ## 🚀 Demonstrating Features
 
