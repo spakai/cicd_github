@@ -16,23 +16,23 @@ permissions:
   issues: write
   pull-requests: write
   security-events: write        # for CodeQL
-  models: read                  # for GitHub Models (LLM summary)
+  models: read                  # ✅ for GitHub Models (LLM summary)
 
 env:
   PYTHON_VERSION: "3.11"
   POETRY_VIRTUALENVS_CREATE: "false"
   # Feature flags (toggle without editing steps)
-  USE_PYTEST_TESTMON: "true"       # set to "true" when you add pytest-testmon (incompatible with -m markers)
+  USE_PYTEST_TESTMON: "true"       # run only tests affected by changes
   USE_RERUNS: "true"
-  USE_MODELS_SUMMARY: "true"    # set to "true" if you have GitHub Models enabled
-  PUBLISH_ON_MAIN: "true"       # uses Docker Hub creds (secrets below)
+  USE_MODELS_SUMMARY: "true"       # set false to disable AI triage
+  PUBLISH_ON_MAIN: "true"          # uses Docker Hub creds (secrets below)
   IMAGE_NAME: "${{ secrets.DOCKERHUB_USERNAME }}/cicd-gitea"
 
 jobs:
   test:
     permissions:
       contents: write
-      models: read
+      models: read                  # ✅ job-level permission for GITHUB_TOKEN
     name: Lint • Typecheck • Test (self-heal)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -44,6 +44,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Ensure CLI utils (jq)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
 
       - name: Cache pip
         uses: actions/cache@v4
@@ -65,7 +70,7 @@ jobs:
           flake8
           mypy fib tests
           bandit -q -r fib
-          pylint -E fib || true  # warnings only; do not fail build on style nits
+          pylint -E fib || true  # warnings only; don't fail on style nits
 
       # --- Tests (self-healing flags) ---
       - name: Run tests
@@ -162,55 +167,51 @@ jobs:
           echo "🤖 AI Analysis: Analyzing failure with GitHub Models..."
           tail -n 500 report.xml > last_logs.txt || true
 
-          # Probe Models API quickly to avoid attempting inference when unavailable
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/json" -X POST https://api.github.com/models/inference -d '{"messages":[{"role":"user","content":"ping"}]}' || echo "000")
+          # ✅ Probe the correct endpoint (cheap 1-token chat)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Content-Type: application/json" \
+            -X POST https://models.github.ai/inference/chat/completions \
+            -d '{"model":"openai/gpt-4.1-mini","messages":[{"role":"user","content":"ping"}],"max_tokens":1}' \
+            || echo "000")
           echo "MODELS_API_STATUS=$STATUS"
 
           if [ "$STATUS" = "200" ]; then
-            # Stronger prompt: request a concise bullet-list (4 items max) and require a short answer
-            BODY=$(jq -n --arg t "Summarize CI failure logs and propose fixes: flakes vs network vs real regression. Provide up to 4 short bullet points (each starting with '-'). If there's nothing to report, reply 'no summary'. Keep it <200 chars." \
-                         --arg l "$(cat last_logs.txt 2>/dev/null || echo 'no junit')" \
-                         '{messages:[{role:"user",content:($t+"\n\nLOGS:\n"+$l)}]}')
-            # Call GitHub Models Inference API
-            RESP=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-                        -H "Content-Type: application/json" \
-                        -X POST https://api.github.com/models/inference \
-                        -d "$BODY" || echo "{}")
+            BODY=$(jq -n \
+              --arg t "Summarize CI failure logs and propose fixes: flakes vs network vs real regression. Provide up to 4 short bullet points (each starting with \"-\"). If nothing to report, reply 'no summary'. Keep <200 chars." \
+              --arg l "$(cat last_logs.txt 2>/dev/null || echo 'no junit')" \
+              '{model:"openai/gpt-4.1-mini", messages:[{role:"user",content:($t+"\n\nLOGS:\n"+$l)}], max_tokens:256}')
+            RESP=$(curl -s \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -H "Content-Type: application/json" \
+              -X POST https://models.github.ai/inference/chat/completions \
+              -d "$BODY" || echo "{}")
 
-            # Debug prints (does not include GH_TOKEN). Trim RESP for log size.
-            echo "--- DEBUG: BODY ---"
-            echo "$BODY" | sed -n '1,200p'
-            echo "--- DEBUG: last_logs.txt (first 200 lines) ---"
-            sed -n '1,200p' last_logs.txt || echo '(no last_logs.txt)'
-            echo "--- DEBUG: RESP (first 200 lines) ---"
-            echo "$RESP" | sed -n '1,200p'
-
-            # Save raw response for debugging
             echo "$RESP" > llm_raw.json
 
-            # Attempt multiple extraction paths for different model response shapes
-            TRY1=$(echo "$RESP" | jq -r '.choices[0].message.content // empty' 2>/dev/null || echo "")
-            TRY2=$(echo "$RESP" | jq -r '.choices[0].text // empty' 2>/dev/null || echo "")
-            TRY3=$(echo "$RESP" | jq -r '.data[0].text // empty' 2>/dev/null || echo "")
-            TRY4=$(echo "$RESP" | jq -r '..|.content? // empty' 2>/dev/null | tr '\n' '\x1f' | sed 's/\x1f/\n/g' | head -n 50 || echo "")
-            SUMMARY=$(printf "%s\n%s\n%s\n%s\n" "$TRY1" "$TRY2" "$TRY3" "$TRY4" | sed '/^$/d' | head -n 50)
-            # Fallback if summary is empty
-            if [ -z "$(echo "$SUMMARY" | tr -d '\n' | tr -d '[:space:]')" ]; then
-              SUMMARY="(no summary produced by models)"
+            # Primary extraction path for chat.completions schema
+            SUMMARY=$(echo "$RESP" | jq -r '.choices[0].message.content // .choices[0].text // empty')
+            if [ -z "$SUMMARY" ]; then
+              # Fallback: search for any 'content' fields just in case
+              SUMMARY=$(echo "$RESP" | jq -r '..|.content? // empty' | head -n 1)
             fi
+            [ -z "$(echo "$SUMMARY" | tr -d '[:space:]')" ] && SUMMARY="(no summary produced by models)"
             echo "$SUMMARY" > llm_summary.txt
+
             echo "✅ AI Analysis complete"
-            echo "Extracted LLM summary (logging for debug):"
+            echo "Extracted LLM summary:"
             echo "$SUMMARY"
           else
-            # Models API not available; run local summarizer fallback
+            # Local summarizer fallback
             echo "⚠️ Models API returned status $STATUS — using local summarizer fallback."
-            echo "$RESP" > llm_raw.json || true
+            echo "{}" > llm_raw.json || true
             FAIL_COUNT=$(grep -c '<failure' last_logs.txt || true)
             TOP_FAILS=$(awk 'BEGIN{RS="</testcase>";ORS="\n"} /<failure/{ if (match($0,/name="[^"]+"/)){n=substr($0,RSTART,RLENGTH); gsub(/name="/,"",n); gsub(/"/,"",n); print n}}' last_logs.txt | head -n 3)
-            if [ -z "$(echo "$TOP_FAILS" | tr -d '\n' | tr -d '[:space:]')" ]; then
-              TOP_FAILS="(no individual failure names found)"
-            fi
+            [ -z "$(echo "$TOP_FAILS" | tr -d '[:space:]')" ] && TOP_FAILS="(no individual failure names found)"
             if grep -qiE "ConnectionError|Network is unreachable|Failed to connect|timeout|timed out|Connection refused" last_logs.txt; then
               PROB="Likely network or flaky external service"
               ACTION="Retry the job (self-healing will retry) and check external services/network connectivity."
@@ -220,29 +221,25 @@ jobs:
             fi
             SUMMARY="Detected ${FAIL_COUNT} failing tests. ${PROB}. Top failures:\n$(echo "$TOP_FAILS" | sed 's/^/- /')\nSuggested action: ${ACTION}"
             printf "%b" "$SUMMARY" > llm_summary.txt
-            echo "Extracted LLM summary (logging for debug):"
+            echo "Extracted LLM summary (fallback):"
             printf "%b" "$SUMMARY"
           fi
 
           # Post to PR/commit
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "📝 Posting AI summary to PR..."
-            gh pr comment ${{ github.event.number }} --body "🤖 **CI Triage (LLM):**\n\n$SUMMARY"
+            gh pr comment ${{ github.event.number }} --body "🤖 **CI Triage (LLM):**\n\n$(cat llm_summary.txt)"
           else
             echo "📝 Posting AI summary to commit..."
-            # Use curl with GH_TOKEN to create a commit comment directly (preserves newlines and content)
-            PAYLOAD=$(jq -n --arg b "🤖 **CI Triage (LLM):**\n\n$SUMMARY" '{body:$b}')
+            PAYLOAD=$(jq -n --arg b "🤖 **CI Triage (LLM):**\n\n$(cat llm_summary.txt)" '{body:$b}')
             RESP2=$(curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
                          -H "Content-Type: application/json" \
                          -X POST "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
                          -d "$PAYLOAD" || echo "{}")
             echo "$RESP2" > commit_comment_resp.json
-            # Print the comment URL for visibility in Actions logs
-            echo "Commit comment response:"
+            echo "Commit comment URL:"
             echo "$RESP2" | jq -r '.html_url // .url // "(no url returned)"'
           fi
-
-      # Debug step removed: use uploaded artifacts (llm_raw.json / llm_summary.txt) and step logs for debugging
 
   publish:
     name: Docker build & push (with retry)
@@ -283,4 +280,3 @@ jobs:
         uses: github/codeql-action/autobuild@v3
       - name: Analyze
         uses: github/codeql-action/analyze@v3
-    # Enable Copilot Autofix in repo/org Security settings to get AI remediation suggestions on alerts.
