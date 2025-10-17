@@ -30,6 +30,8 @@ env:
 
 jobs:
   test:
+    permissions:
+      contents: write
     name: Lint • Typecheck • Test (self-heal)
     runs-on: ubuntu-latest
     timeout-minutes: 10
