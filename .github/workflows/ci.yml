@@ -242,21 +242,7 @@ jobs:
             echo "$RESP2" | jq -r '.html_url // .url // "(no url returned)"'
           fi
 
-      - name: Debug: check GITHUB_TOKEN & Models API status
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Confirm token is present (non-empty). This prints YES/NO; token value is masked.
-          if [ -n "$GH_TOKEN" ]; then echo "GITHUB_TOKEN present: YES"; else echo "GITHUB_TOKEN present: NO"; fi
-
-          # Check Models API status code (no token value printed). Shows 200/403/404 etc.
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Content-Type: application/json" \
-            -X POST https://api.github.com/models/inference \
-            -d '{"messages":[{"role":"user","content":"ping"}]}')
-          echo "MODELS_API_STATUS=$STATUS"
+      # Debug step removed: use uploaded artifacts (llm_raw.json / llm_summary.txt) and step logs for debugging
 
   publish:
     name: Docker build & push (with retry)
