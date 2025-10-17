@@ -32,11 +32,7 @@ jobs:
   test:
     name: Lint • Typecheck • Test (self-heal)
     runs-on: ubuntu-latest
-<<<<<<< HEAD
     timeout-minutes: 10
-=======
-    timeout-minutes: 45
->>>>>>> 923ba265f06d0e268e17ce2149724c50c6f3482c
 
     steps:
       - uses: actions/checkout@v4
