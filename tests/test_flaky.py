@@ -33,7 +33,8 @@ def test_flaky_external_service():
 @pytest.mark.flaky
 def test_flaky_assertion():
     """Simulates a flaky assertion that sometimes fails."""
-    # Simulate race condition or timing issue - high failure rate to test retries
+    # Simulate race condition or timing issue
+    # High failure rate to test retries
     import time
     time.sleep(0.01)
     if random.random() < 0.4:
