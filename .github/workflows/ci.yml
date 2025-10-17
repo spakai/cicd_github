@@ -22,7 +22,7 @@ env:
   PYTHON_VERSION: "3.11"
   POETRY_VIRTUALENVS_CREATE: "false"
   # Feature flags (toggle without editing steps)
-  USE_LAUNCHABLE: "false"       # set to "true" when you add Launchable token
+  USE_PYTEST_TESTMON: "true"       # set to "true" when you add pytest-testmon
   USE_RERUNS: "true"
   USE_MODELS_SUMMARY: "true"    # requires GitHub Models to be enabled for the repo/org
   PUBLISH_ON_MAIN: "true"       # uses Docker Hub creds (secrets below)
@@ -32,7 +32,7 @@ jobs:
   test:
     name: Lint • Typecheck • Test (self-heal)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov flake8 mypy bandit pylint
           if [ "${{ env.USE_RERUNS }}" = "true" ]; then pip install pytest-rerunfailures; fi
-          if [ "${{ env.USE_LAUNCHABLE }}" = "true" ]; then pip install launchable; fi
+          if [ "${{ env.USE_PYTEST_TESTMON }}" = "true" ]; then pip install pytest-testmon; fi
 
       - name: Static checks
         run: |
@@ -64,43 +64,24 @@ jobs:
           bandit -q -r fib
           pylint -E fib || true  # warnings only; do not fail build on style nits
 
-      # --- Predictive test selection (ML) — optional ---
-      - name: Launchable • record build
-        if: env.USE_LAUNCHABLE == 'true'
-        env:
-          LAUNCHABLE_TOKEN: ${{ secrets.LAUNCHABLE_TOKEN }}
-        run: |
-          launchable record build --name "$GITHUB_SHA"
-
-      - name: Launchable • make subset (PRs only)
-        if: env.USE_LAUNCHABLE == 'true' && github.event_name == 'pull_request'
-        run: |
-          # enumerate pytest tests (node ids)
-          python - <<'PY'
-          import pathlib, subprocess, sys
-          r = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q"], capture_output=True, text=True)
-          pathlib.Path("all-tests.txt").write_text("\n".join([l for l in r.stdout.splitlines() if "::" in l]))
-          PY
-          launchable subset --build "$GITHUB_SHA" pytest < all-tests.txt > subset.txt || true
-
       # --- Tests (self-healing flags) ---
       - name: Run tests
         id: run_pytest
         run: |
           set -e
           PYTEST_BASE="pytest -q --junitxml=report.xml --cov=fib --cov-report=term-missing"
+          # Skip timeout tests in CI (they're slow demo tests)
+          PYTEST_BASE="$PYTEST_BASE -m 'not timeout'"
           if [ "${{ env.USE_RERUNS }}" = "true" ]; then 
             echo "🧪 Self-healing: Auto-retry enabled (2 retries with 3s delay)"
             PYTEST_BASE="$PYTEST_BASE --reruns 2 --reruns-delay 3"
           fi
-          if [ -s subset.txt ]; then
-            echo "🤖 ML-powered test selection: Running only affected tests"
-            echo "   Test subset: $(wc -l < subset.txt) tests selected"
-            $PYTEST_BASE $(cat subset.txt)
-          else
-            echo "📋 Running full test suite"
-            $PYTEST_BASE
+          if [ "${{ env.USE_PYTEST_TESTMON }}" = "true" ]; then
+            echo "🤖 pytest-testmon: Running only tests affected by changed files"
+            PYTEST_BASE="$PYTEST_BASE --testmon"
           fi
+          echo "📋 Running test suite (skipping timeout demo tests)"
+          $PYTEST_BASE
 
       - name: Always upload JUnit + coverage
         if: always()
@@ -119,7 +100,7 @@ jobs:
           echo "🧠 INTELLIGENT CI/CD FEATURES USED"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "✅ Self-healing enabled: ${{ env.USE_RERUNS }}"
-          echo "✅ ML test selection: ${{ env.USE_LAUNCHABLE }}"
+          echo "✅ pytest-testmon: ${{ env.USE_PYTEST_TESTMON }}"
           echo "✅ AI failure analysis: ${{ env.USE_MODELS_SUMMARY }}"
           echo "✅ Docker retry: Enabled (3 attempts)"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

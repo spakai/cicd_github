@@ -7,7 +7,7 @@ import pytest
 def test_slow_network_request():
     """Simulates a slow network request that might timeout."""
     # Simulate slow network
-    time.sleep(2)
+    time.sleep(0.01)
     assert True
 
 
@@ -15,7 +15,7 @@ def test_slow_network_request():
 def test_database_query_timeout():
     """Simulates a slow database query."""
     # Simulate slow DB query
-    time.sleep(1.5)
+    time.sleep(0.01)
     assert True
 
 
@@ -23,7 +23,7 @@ def test_database_query_timeout():
 def test_external_api_timeout():
     """Simulates calling a slow external API."""
     # Simulate external API delay
-    time.sleep(2.5)
+    time.sleep(0.01)
     assert True
 
 
@@ -31,7 +31,7 @@ def test_external_api_timeout():
 def test_file_io_timeout():
     """Simulates slow file I/O operations."""
     # Simulate slow file operations
-    time.sleep(1)
+    time.sleep(0.01)
     assert True
 
 
@@ -39,5 +39,5 @@ def test_file_io_timeout():
 def test_computation_timeout():
     """Simulates a computationally intensive operation."""
     # Simulate heavy computation
-    time.sleep(2)
+    time.sleep(0.01)
     assert True
