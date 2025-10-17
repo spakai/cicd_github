@@ -71,8 +71,8 @@ jobs:
           set -e
           PYTEST_BASE="pytest -q --junitxml=report.xml --cov=fib --cov-report=term-missing"
           if [ "${{ env.USE_RERUNS }}" = "true" ]; then 
-            echo "🧪 Self-healing: Auto-retry enabled (2 retries with 3s delay)"
-            PYTEST_BASE="$PYTEST_BASE --reruns 2 --reruns-delay 3"
+            echo "🧪 Self-healing: Auto-retry enabled (2 retries with 0.1s delay)"
+            PYTEST_BASE="$PYTEST_BASE --reruns 2 --reruns-delay 0.1"
           fi
           if [ "${{ env.USE_PYTEST_TESTMON }}" = "true" ]; then
             echo "🤖 pytest-testmon: Running only tests affected by changed files"
