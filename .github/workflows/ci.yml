@@ -161,53 +161,69 @@ jobs:
         run: |
           echo "🤖 AI Analysis: Analyzing failure with GitHub Models..."
           tail -n 500 report.xml > last_logs.txt || true
-          # Stronger prompt: request a concise bullet-list (4 items max) and require a short answer
-          BODY=$(jq -n --arg t "Summarize CI failure logs and propose fixes: flakes vs network vs real regression. Provide up to 4 short bullet points (each starting with '-'). If there's nothing to report, reply 'no summary'. Keep it <200 chars." \
-                       --arg l "$(cat last_logs.txt 2>/dev/null || echo 'no junit')" \
-                       '{messages:[{role:"user",content:($t+"\n\nLOGS:\n"+$l)}]}')
-          # Call GitHub Models Inference API
-          RESP=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-                      -H "Content-Type: application/json" \
-                      -X POST https://api.github.com/models/inference \
-                      -d "$BODY" || echo "{}")
 
-          # Debug prints (does not include GH_TOKEN). Trim RESP for log size.
-          echo "--- DEBUG: BODY ---"
-          echo "$BODY" | sed -n '1,200p'
-          echo "--- DEBUG: last_logs.txt (first 200 lines) ---"
-          sed -n '1,200p' last_logs.txt || echo '(no last_logs.txt)'
-          echo "--- DEBUG: RESP (first 200 lines) ---"
-          echo "$RESP" | sed -n '1,200p'
+          # Probe Models API quickly to avoid attempting inference when unavailable
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/json" -X POST https://api.github.com/models/inference -d '{"messages":[{"role":"user","content":"ping"}]}' || echo "000")
+          echo "MODELS_API_STATUS=$STATUS"
 
-          # If the Models API returns a 404/Not Found, provide a clear summary message
-          API_MESSAGE=$(echo "$RESP" | jq -r '.message // empty' 2>/dev/null || echo "")
-          if [ "${API_MESSAGE}" = "Not Found" ]; then
-            echo "⚠️ Models API returned 'Not Found' — Models may not be enabled for this repo/org or token lacks access."
-            SUMMARY="(GitHub Models unavailable: enable Models for this repository or organization, or set USE_MODELS_SUMMARY=false)"
+          if [ "$STATUS" = "200" ]; then
+            # Stronger prompt: request a concise bullet-list (4 items max) and require a short answer
+            BODY=$(jq -n --arg t "Summarize CI failure logs and propose fixes: flakes vs network vs real regression. Provide up to 4 short bullet points (each starting with '-'). If there's nothing to report, reply 'no summary'. Keep it <200 chars." \
+                         --arg l "$(cat last_logs.txt 2>/dev/null || echo 'no junit')" \
+                         '{messages:[{role:"user",content:($t+"\n\nLOGS:\n"+$l)}]}')
+            # Call GitHub Models Inference API
+            RESP=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+                        -H "Content-Type: application/json" \
+                        -X POST https://api.github.com/models/inference \
+                        -d "$BODY" || echo "{}")
+
+            # Debug prints (does not include GH_TOKEN). Trim RESP for log size.
+            echo "--- DEBUG: BODY ---"
+            echo "$BODY" | sed -n '1,200p'
+            echo "--- DEBUG: last_logs.txt (first 200 lines) ---"
+            sed -n '1,200p' last_logs.txt || echo '(no last_logs.txt)'
+            echo "--- DEBUG: RESP (first 200 lines) ---"
+            echo "$RESP" | sed -n '1,200p'
+
+            # Save raw response for debugging
             echo "$RESP" > llm_raw.json
+
+            # Attempt multiple extraction paths for different model response shapes
+            TRY1=$(echo "$RESP" | jq -r '.choices[0].message.content // empty' 2>/dev/null || echo "")
+            TRY2=$(echo "$RESP" | jq -r '.choices[0].text // empty' 2>/dev/null || echo "")
+            TRY3=$(echo "$RESP" | jq -r '.data[0].text // empty' 2>/dev/null || echo "")
+            TRY4=$(echo "$RESP" | jq -r '..|.content? // empty' 2>/dev/null | tr '\n' '\x1f' | sed 's/\x1f/\n/g' | head -n 50 || echo "")
+            SUMMARY=$(printf "%s\n%s\n%s\n%s\n" "$TRY1" "$TRY2" "$TRY3" "$TRY4" | sed '/^$/d' | head -n 50)
+            # Fallback if summary is empty
+            if [ -z "$(echo "$SUMMARY" | tr -d '\n' | tr -d '[:space:]')" ]; then
+              SUMMARY="(no summary produced by models)"
+            fi
             echo "$SUMMARY" > llm_summary.txt
+            echo "✅ AI Analysis complete"
             echo "Extracted LLM summary (logging for debug):"
             echo "$SUMMARY"
-            # Skip further model extraction and proceed to posting the explanatory summary
-            :
+          else
+            # Models API not available; run local summarizer fallback
+            echo "⚠️ Models API returned status $STATUS — using local summarizer fallback."
+            echo "$RESP" > llm_raw.json || true
+            FAIL_COUNT=$(grep -c '<failure' last_logs.txt || true)
+            TOP_FAILS=$(awk 'BEGIN{RS="</testcase>";ORS="\n"} /<failure/{ if (match($0,/name="[^"]+"/)){n=substr($0,RSTART,RLENGTH); gsub(/name="/,"",n); gsub(/"/,"",n); print n}}' last_logs.txt | head -n 3)
+            if [ -z "$(echo "$TOP_FAILS" | tr -d '\n' | tr -d '[:space:]')" ]; then
+              TOP_FAILS="(no individual failure names found)"
+            fi
+            if grep -qiE "ConnectionError|Network is unreachable|Failed to connect|timeout|timed out|Connection refused" last_logs.txt; then
+              PROB="Likely network or flaky external service"
+              ACTION="Retry the job (self-healing will retry) and check external services/network connectivity."
+            else
+              PROB="Likely assertion/regression"
+              ACTION="Inspect the failing tests and fix code or tests."
+            fi
+            SUMMARY="Detected ${FAIL_COUNT} failing tests. ${PROB}. Top failures:\n$(echo "$TOP_FAILS" | sed 's/^/- /')\nSuggested action: ${ACTION}"
+            printf "%b" "$SUMMARY" > llm_summary.txt
+            echo "Extracted LLM summary (logging for debug):"
+            printf "%b" "$SUMMARY"
           fi
-          # Save raw response for debugging
-          echo "$RESP" > llm_raw.json
 
-          # Attempt multiple extraction paths for different model response shapes
-          TRY1=$(echo "$RESP" | jq -r '.choices[0].message.content // empty' 2>/dev/null || echo "")
-          TRY2=$(echo "$RESP" | jq -r '.choices[0].text // empty' 2>/dev/null || echo "")
-          TRY3=$(echo "$RESP" | jq -r '.data[0].text // empty' 2>/dev/null || echo "")
-          TRY4=$(echo "$RESP" | jq -r '..|.content? // empty' 2>/dev/null | tr '\n' '\x1f' | sed 's/\x1f/\n/g' | head -n 50 || echo "")
-          SUMMARY=$(printf "%s\n%s\n%s\n%s\n" "$TRY1" "$TRY2" "$TRY3" "$TRY4" | sed '/^$/d' | head -n 50)
-          # Fallback if summary is empty
-          if [ -z "$(echo "$SUMMARY" | tr -d '\n' | tr -d '[:space:]')" ]; then
-            SUMMARY="(no summary produced by models)"
-          fi
-          echo "$SUMMARY" > llm_summary.txt
-          echo "✅ AI Analysis complete"
-          echo "Extracted LLM summary (logging for debug):"
-          echo "$SUMMARY"
           # Post to PR/commit
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "📝 Posting AI summary to PR..."
@@ -225,6 +241,22 @@ jobs:
             echo "Commit comment response:"
             echo "$RESP2" | jq -r '.html_url // .url // "(no url returned)"'
           fi
+
+      - name: Debug: check GITHUB_TOKEN & Models API status
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Confirm token is present (non-empty). This prints YES/NO; token value is masked.
+          if [ -n "$GH_TOKEN" ]; then echo "GITHUB_TOKEN present: YES"; else echo "GITHUB_TOKEN present: NO"; fi
+
+          # Check Models API status code (no token value printed). Shows 200/403/404 etc.
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -X POST https://api.github.com/models/inference \
+            -d '{"messages":[{"role":"user","content":"ping"}]}')
+          echo "MODELS_API_STATUS=$STATUS"
 
   publish:
     name: Docker build & push (with retry)
