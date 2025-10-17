@@ -169,6 +169,14 @@ jobs:
                       -H "Content-Type: application/json" \
                       -X POST https://api.github.com/models/inference \
                       -d "$BODY" || echo "{}")
+
+          # Debug prints (does not include GH_TOKEN). Trim RESP for log size.
+          echo "--- DEBUG: BODY ---"
+          echo "$BODY" | sed -n '1,200p'
+          echo "--- DEBUG: last_logs.txt (first 200 lines) ---"
+          sed -n '1,200p' last_logs.txt || echo '(no last_logs.txt)'
+          echo "--- DEBUG: RESP (first 200 lines) ---"
+          echo "$RESP" | sed -n '1,200p'
           # Save raw response for debugging
           echo "$RESP" > llm_raw.json
 
