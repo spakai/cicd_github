@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 import json
 
-from .core import fibonacci
+from .core import fibonacci, fibonacci_sequence
 
 
 class FibRequestHandler(BaseHTTPRequestHandler):
@@ -18,10 +18,16 @@ class FibRequestHandler(BaseHTTPRequestHandler):
         computes the Fibonacci number, and returns the result as JSON.
         """
         parsed = urlparse(self.path)
-        if parsed.path != "/fib/":
-            self.send_error(404)
+        if parsed.path == "/fib/":
+            self._handle_single_value(parsed)
+            return
+        if parsed.path == "/fib/sequence/":
+            self._handle_sequence(parsed)
             return
 
+        self.send_error(404)
+
+    def _handle_single_value(self, parsed) -> None:
         params = parse_qs(parsed.query)
         if "n" not in params:
             self.send_error(400, "missing n parameter")
@@ -30,16 +36,27 @@ class FibRequestHandler(BaseHTTPRequestHandler):
             n = int(params["n"][0])
             value = fibonacci(n)
         except (ValueError, TypeError):
-            self.send_error(
-                400,
-                "invalid n parameter"
-            )
+            self.send_error(400, "invalid n parameter")
             return
 
-        body = json.dumps({
-            "n": n,
-            "value": value
-        }).encode()
+        self._write_json({"n": n, "value": value})
+
+    def _handle_sequence(self, parsed) -> None:
+        params = parse_qs(parsed.query)
+        if "count" not in params:
+            self.send_error(400, "missing count parameter")
+            return
+        try:
+            count = int(params["count"][0])
+            sequence = fibonacci_sequence(count)
+        except (ValueError, TypeError):
+            self.send_error(400, "invalid count parameter")
+            return
+
+        self._write_json({"count": count, "sequence": sequence})
+
+    def _write_json(self, payload: dict) -> None:
+        body = json.dumps(payload).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

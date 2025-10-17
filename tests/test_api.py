@@ -44,3 +44,31 @@ def test_get_fibonacci_negative() -> None:
         assert err.code == 400
     finally:
         stop_server(server, thread)
+
+
+def test_get_fibonacci_sequence() -> None:
+    server, thread = start_server()
+    url = (
+        f"http://{server.server_name}:{server.server_port}/fib/sequence/?count=5"
+    )
+    try:
+        with urllib.request.urlopen(url) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode())
+            assert data == {"count": 5, "sequence": [0, 1, 1, 2, 3]}
+    finally:
+        stop_server(server, thread)
+
+
+def test_get_fibonacci_sequence_invalid() -> None:
+    server, thread = start_server()
+    url = (
+        f"http://{server.server_name}:{server.server_port}/fib/sequence/?count=-1"
+    )
+    try:
+        with urllib.request.urlopen(url):
+            pass
+    except urllib.error.HTTPError as err:
+        assert err.code == 400
+    finally:
+        stop_server(server, thread)

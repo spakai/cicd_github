@@ -1,0 +1,72 @@
+name: Self-heal CI
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+jobs:
+  retry-transient-failures:
+    name: Retry failed CI run
+    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Trigger CI rerun
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runId = context.payload.workflow_run.id;
+            await github.rest.actions.reRunWorkflow({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+            });
+            core.info(`Requested rerun for workflow run ${runId}`);
+
+  escalate-persistent-failure:
+    name: Escalate unrecovered failure
+    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt > 1 }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      issues: write
+      contents: read
+    steps:
+      - name: Open triage issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const title = `[CI] ${run.name} run ${run.id} failing after auto-retry`;
+            const search = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${owner}/${repo} "${run.id}" in:title state:open type:issue`,
+            });
+            if (search.data.total_count > 0) {
+              core.info('An open triage issue already exists for this run.');
+              return;
+            }
+            const body = [
+              `The ${run.name} workflow failed after an automatic retry attempt.`,
+              '',
+              `- **Run ID:** ${run.id}`,
+              `- **Attempt:** ${run.run_attempt}`,
+              `- **Event:** ${run.event}`,
+              `- **Branch:** ${run.head_branch}`,
+              `- **Commit:** ${run.head_sha}`,
+              `- **URL:** ${run.html_url}`,
+              '',
+              'Please review the failing jobs, capture any new remediation steps, and close this issue once resolved.',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+              labels: ['ci-failure', 'needs-triage'],
+            });
+            core.info('Opened triage issue for persistent failure.');
