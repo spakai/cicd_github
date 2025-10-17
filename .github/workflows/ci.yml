@@ -24,7 +24,7 @@ env:
   # Feature flags (toggle without editing steps)
   USE_PYTEST_TESTMON: "false"       # set to "true" when you add pytest-testmon (incompatible with -m markers)
   USE_RERUNS: "true"
-  USE_MODELS_SUMMARY: "true"    # requires GitHub Models to be enabled for the repo/org
+  USE_MODELS_SUMMARY: "true"    # set to "true" if you have GitHub Models enabled
   PUBLISH_ON_MAIN: "true"       # uses Docker Hub creds (secrets below)
   IMAGE_NAME: "${{ secrets.DOCKERHUB_USERNAME }}/cicd-gitea"
 
