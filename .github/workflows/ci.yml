@@ -32,6 +32,7 @@ jobs:
   test:
     permissions:
       contents: write
+      models: read
     name: Lint • Typecheck • Test (self-heal)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -177,6 +178,19 @@ jobs:
           sed -n '1,200p' last_logs.txt || echo '(no last_logs.txt)'
           echo "--- DEBUG: RESP (first 200 lines) ---"
           echo "$RESP" | sed -n '1,200p'
+
+          # If the Models API returns a 404/Not Found, provide a clear summary message
+          API_MESSAGE=$(echo "$RESP" | jq -r '.message // empty' 2>/dev/null || echo "")
+          if [ "${API_MESSAGE}" = "Not Found" ]; then
+            echo "⚠️ Models API returned 'Not Found' — Models may not be enabled for this repo/org or token lacks access."
+            SUMMARY="(GitHub Models unavailable: enable Models for this repository or organization, or set USE_MODELS_SUMMARY=false)"
+            echo "$RESP" > llm_raw.json
+            echo "$SUMMARY" > llm_summary.txt
+            echo "Extracted LLM summary (logging for debug):"
+            echo "$SUMMARY"
+            # Skip further model extraction and proceed to posting the explanatory summary
+            :
+          fi
           # Save raw response for debugging
           echo "$RESP" > llm_raw.json
 
